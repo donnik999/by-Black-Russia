@@ -1,0 +1,4 @@
+run:
+  cmd: python3 main.py
+  env:
+    - TELEGRAM_TOKEN=7220830808:AAE7R_edzGpvUNboGOthydsT9m81TIfiqzU
