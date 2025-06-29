@@ -6,9 +6,9 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
+from aiogram.client.bot import DefaultBotProperties
 
-# --- ВСТАВЬ СВОЙ ТОКЕН СЮДА ---
+# ВСТАВЬ СВОЙ ТОКЕН СЮДА (и ADMIN_ID тоже)
 BOT_TOKEN = "7220830808:AAE7R_edzGpvUNboGOthydsT9m81TIfiqzU"
 ADMIN_ID = 6712617550  # <-- Замени на свой Telegram user_id!
 
@@ -41,31 +41,35 @@ class AdForm(StatesGroup):
     photo = State()
 
 def get_main_kb():
-    kb = ReplyKeyboardBuilder()
-    kb.button(text='🛒 Каталог объявлений')
-    kb.button(text='➕ Добавить объявление')
-    kb.button(text='📦 Мои объявления')
-    kb.button(text='💬 Поддержка')
-    kb.button(text='🌟 Спонсоры')
-    kb.adjust(1, 2, 2)
-    return kb.as_markup(resize_keyboard=True)
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(
+        types.KeyboardButton('🛒 Каталог объявлений'),
+        types.KeyboardButton('➕ Добавить объявление')
+    )
+    kb.add(
+        types.KeyboardButton('📦 Мои объявления'),
+        types.KeyboardButton('💬 Поддержка'),
+        types.KeyboardButton('🌟 Спонсоры')
+    )
+    return kb
 
 def get_cancel_kb():
-    kb = ReplyKeyboardBuilder()
-    kb.button(text='❌ Отмена')
-    return kb.as_markup(resize_keyboard=True)
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(types.KeyboardButton('❌ Отмена'))
+    return kb
 
 def get_type_kb():
-    kb = InlineKeyboardBuilder()
-    kb.button(text="Продажа", callback_data="type_sell")
-    kb.button(text="Покупка", callback_data="type_buy")
-    kb.adjust(2)
-    return kb.as_markup()
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        types.InlineKeyboardButton(text="Продажа", callback_data="type_sell"),
+        types.InlineKeyboardButton(text="Покупка", callback_data="type_buy")
+    )
+    return kb
 
 def get_delete_kb(ad_id):
-    kb = InlineKeyboardBuilder()
-    kb.button(text="❌ Удалить", callback_data=f"delete_{ad_id}")
-    return kb.as_markup()
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_{ad_id}"))
+    return kb
 
 def add_ad(user_id, username, ad_type, title, desc, photo_id):
     conn = sqlite3.connect(DB_NAME)
@@ -108,7 +112,11 @@ def get_ad(ad_id):
     conn.close()
     return ad
 
-bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
+# Важно! Вот тут теперь без Warning
+bot = Bot(
+    token=BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode="HTML")
+)
 dp = Dispatcher(storage=MemoryStorage())
 
 @dp.message(Command("start"))
