@@ -1,17 +1,20 @@
 import os
+import asyncio
 import sqlite3
-from aiogram import Bot, Dispatcher, executor, types
-from aiogram.types import InputMediaPhoto, InputFile, ParseMode, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
-from aiogram.dispatcher.filters import Text
-from aiogram.utils.markdown import hbold
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command, StateFilter, Text
+from aiogram.types import Message, CallbackQuery, FSInputFile
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.state import StatesGroup, State
+from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
-# === НАСТРОЙКИ ===
 BOT_TOKEN = os.getenv("7220830808:AAE7R_edzGpvUNboGOthydsT9m81TIfiqzU")
 ADMIN_ID = 6712617550  # <-- Замени на свой Telegram user_id!
 
-# === БАЗА ДАННЫХ ===
 DB_NAME = "br_catalog.db"
 
+# === БАЗА ДАННЫХ ===
 def db_init():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -32,36 +35,40 @@ def db_init():
 
 db_init()
 
-# === КНОПКИ МЕНЮ ===
-main_kb = ReplyKeyboardMarkup(resize_keyboard=True)
-main_kb.add(KeyboardButton('🛒 Каталог объявлений'))
-main_kb.add(KeyboardButton('➕ Добавить объявление'), KeyboardButton('📦 Мои объявления'))
-main_kb.add(KeyboardButton('💬 Поддержка'), KeyboardButton('🌟 Спонсоры'))
-
-type_kb = InlineKeyboardMarkup(row_width=2)
-type_kb.add(
-    InlineKeyboardButton("Продажа", callback_data="type_sell"),
-    InlineKeyboardButton("Покупка", callback_data="type_buy")
-)
-
-cancel_kb = ReplyKeyboardMarkup(resize_keyboard=True).add('❌ Отмена')
-
-# === СОСТОЯНИЯ ДЛЯ FSM ===
-from aiogram.dispatcher import FSMContext
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher.filters.state import State, StatesGroup
-
-storage = MemoryStorage()
-
+# FSM состояния
 class AdForm(StatesGroup):
     type = State()
     title = State()
     description = State()
     photo = State()
 
-# === ИНИЦИАЛИЗАЦИЯ БОТА ===
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(bot, storage=storage)
+# === КНОПКИ МЕНЮ ===
+def get_main_kb():
+    kb = ReplyKeyboardBuilder()
+    kb.button(text='🛒 Каталог объявлений')
+    kb.button(text='➕ Добавить объявление')
+    kb.button(text='📦 Мои объявления')
+    kb.button(text='💬 Поддержка')
+    kb.button(text='🌟 Спонсоры')
+    kb.adjust(1, 2, 2)
+    return kb.as_markup(resize_keyboard=True)
+
+def get_cancel_kb():
+    kb = ReplyKeyboardBuilder()
+    kb.button(text='❌ Отмена')
+    return kb.as_markup(resize_keyboard=True)
+
+def get_type_kb():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Продажа", callback_data="type_sell")
+    kb.button(text="Покупка", callback_data="type_buy")
+    kb.adjust(2)
+    return kb.as_markup()
+
+def get_delete_kb(ad_id):
+    kb = InlineKeyboardBuilder()
+    kb.button(text="❌ Удалить", callback_data=f"delete_{ad_id}")
+    return kb.as_markup()
 
 # === ХЭЛПЕРЫ ДЛЯ БД ===
 def add_ad(user_id, username, ad_type, title, desc, photo_id):
@@ -105,72 +112,75 @@ def get_ad(ad_id):
     conn.close()
     return ad
 
-# === КОМАНДЫ И МЕНЮ ===
+# === ИНИЦИАЛИЗАЦИЯ БОТА ===
+bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
+dp = Dispatcher(storage=MemoryStorage())
 
-@dp.message_handler(commands=['start', 'menu'])
-async def cmd_start(message: types.Message):
+# === КОМАНДЫ И МЕНЮ ===
+@dp.message(Command("start"))
+async def cmd_start(message: Message):
     await message.answer(
         f"👋 Привет, {message.from_user.first_name}!\n"
         "Добро пожаловать в каталог объявлений Black Russia.\n\n"
         "Выберите действие из меню ниже 👇",
-        reply_markup=main_kb
+        reply_markup=get_main_kb()
     )
 
-@dp.message_handler(lambda m: m.text == '🛒 Каталог объявлений')
-async def ads_catalog(message: types.Message):
+@dp.message(Text("🛒 Каталог объявлений"))
+async def ads_catalog(message: Message):
     ads = get_all_ads()
     if not ads:
-        await message.answer("Пока что нет объявлений.\nДобавьте первое!", reply_markup=main_kb)
+        await message.answer("Пока что нет объявлений.\nДобавьте первое!", reply_markup=get_main_kb())
         return
     for ad in ads[:10]:  # Показываем только 10 последних
-        text = f"{hbold('Тип:')} {ad[3].capitalize()}\n{hbold('Заголовок:')} {ad[4]}\n{hbold('Описание:')} {ad[5]}\n{hbold('Автор:')} @{ad[2] if ad[2] else ad[1]}"
+        text = f"<b>Тип:</b> {ad[3].capitalize()}\n<b>Заголовок:</b> {ad[4]}\n<b>Описание:</b> {ad[5]}\n<b>Автор:</b> @{ad[2] if ad[2] else ad[1]}"
         kb = None
         if message.from_user.id == ADMIN_ID:
-            kb = InlineKeyboardMarkup()
-            kb.add(InlineKeyboardButton("❌ Удалить", callback_data=f"delete_{ad[0]}"))
+            kb = get_delete_kb(ad[0])
         if ad[6]:
-            await message.answer_photo(ad[6], caption=text, reply_markup=kb or main_kb)
+            await message.answer_photo(ad[6], caption=text, reply_markup=kb or get_main_kb())
         else:
-            await message.answer(text, reply_markup=kb or main_kb)
+            await message.answer(text, reply_markup=kb or get_main_kb())
 
-@dp.message_handler(lambda m: m.text == '➕ Добавить объявление')
-async def add_ad_start(message: types.Message):
-    await message.answer("Выберите тип объявления:", reply_markup=type_kb)
-    await AdForm.type.set()
+@dp.message(Text("➕ Добавить объявление"))
+async def add_ad_start(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Выберите тип объявления:", reply_markup=get_type_kb())
+    await state.set_state(AdForm.type)
 
-@dp.callback_query_handler(lambda c: c.data.startswith("type_"), state=AdForm.type)
-async def ad_type_chosen(call: types.CallbackQuery, state: FSMContext):
+@dp.callback_query(F.data.startswith("type_"), StateFilter(AdForm.type))
+async def ad_type_chosen(call: CallbackQuery, state: FSMContext):
     ad_type = call.data.replace("type_", "")
     await state.update_data(type=ad_type)
-    await call.message.edit_text(f"Тип выбран: {('Покупка' if ad_type == 'buy' else 'Продажа')}\n\nВведите название товара:", reply_markup=None)
-    await AdForm.title.set()
+    await call.message.edit_text(f"Тип выбран: {'Покупка' if ad_type == 'buy' else 'Продажа'}\n\nВведите название товара:")
+    await state.set_state(AdForm.title)
 
-@dp.message_handler(state=AdForm.title)
-async def ad_title_entered(message: types.Message, state: FSMContext):
+@dp.message(StateFilter(AdForm.title))
+async def ad_title_entered(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
-        await state.finish()
-        await message.answer("Добавление объявления отменено.", reply_markup=main_kb)
+        await state.clear()
+        await message.answer("Добавление объявления отменено.", reply_markup=get_main_kb())
         return
     await state.update_data(title=message.text)
-    await message.answer("Введите описание объявления (до 400 символов):", reply_markup=cancel_kb)
-    await AdForm.description.set()
+    await message.answer("Введите описание объявления (до 400 символов):", reply_markup=get_cancel_kb())
+    await state.set_state(AdForm.description)
 
-@dp.message_handler(state=AdForm.description)
-async def ad_description_entered(message: types.Message, state: FSMContext):
+@dp.message(StateFilter(AdForm.description))
+async def ad_description_entered(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
-        await state.finish()
-        await message.answer("Добавление объявления отменено.", reply_markup=main_kb)
+        await state.clear()
+        await message.answer("Добавление объявления отменено.", reply_markup=get_main_kb())
         return
     desc = message.text
     if len(desc) > 400:
         await message.answer("Слишком длинное описание, до 400 символов.")
         return
     await state.update_data(description=desc)
-    await message.answer("Прикрепите фото товара (или отправьте '❌ Отмена', если без фото):", reply_markup=cancel_kb)
-    await AdForm.photo.set()
+    await message.answer("Прикрепите фото товара (или отправьте '❌ Отмена', если без фото):", reply_markup=get_cancel_kb())
+    await state.set_state(AdForm.photo)
 
-@dp.message_handler(content_types=['photo'], state=AdForm.photo)
-async def ad_photo_entered(message: types.Message, state: FSMContext):
+@dp.message(StateFilter(AdForm.photo), F.photo)
+async def ad_photo_entered(message: Message, state: FSMContext):
     photo_id = message.photo[-1].file_id
     data = await state.get_data()
     add_ad(
@@ -181,19 +191,14 @@ async def ad_photo_entered(message: types.Message, state: FSMContext):
         desc=data['description'],
         photo_id=photo_id
     )
-    await state.finish()
-    await message.answer("Объявление добавлено с фото! ✅", reply_markup=main_kb)
+    await state.clear()
+    await message.answer("Объявление добавлено с фото! ✅", reply_markup=get_main_kb())
 
-@dp.message_handler(lambda m: m.text == "❌ Отмена", state="*")
-async def ad_cancel(message: types.Message, state: FSMContext):
-    await state.finish()
-    await message.answer("Добавление объявления отменено.", reply_markup=main_kb)
-
-@dp.message_handler(content_types=['text'], state=AdForm.photo)
-async def ad_no_photo(message: types.Message, state: FSMContext):
+@dp.message(StateFilter(AdForm.photo), F.text)
+async def ad_no_photo(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
-        await state.finish()
-        await message.answer("Добавление объявления отменено.", reply_markup=main_kb)
+        await state.clear()
+        await message.answer("Добавление объявления отменено.", reply_markup=get_main_kb())
         return
     data = await state.get_data()
     add_ad(
@@ -204,49 +209,60 @@ async def ad_no_photo(message: types.Message, state: FSMContext):
         desc=data['description'],
         photo_id=None
     )
-    await state.finish()
-    await message.answer("Объявление добавлено (без фото) ✅", reply_markup=main_kb)
+    await state.clear()
+    await message.answer("Объявление добавлено (без фото) ✅", reply_markup=get_main_kb())
 
-@dp.message_handler(lambda m: m.text == '📦 Мои объявления')
-async def my_ads(message: types.Message):
+@dp.message(Text("📦 Мои объявления"))
+async def my_ads(message: Message):
     ads = get_user_ads(message.from_user.id)
     if not ads:
-        await message.answer("У вас пока нет объявлений.", reply_markup=main_kb)
+        await message.answer("У вас пока нет объявлений.", reply_markup=get_main_kb())
         return
     for ad in ads:
-        text = f"{hbold('Тип:')} {ad[1].capitalize()}\n{hbold('Заголовок:')} {ad[2]}\n{hbold('Описание:')} {ad[3]}"
+        text = f"<b>Тип:</b> {ad[1].capitalize()}\n<b>Заголовок:</b> {ad[2]}\n<b>Описание:</b> {ad[3]}"
         if ad[4]:
-            await message.answer_photo(ad[4], caption=text, reply_markup=main_kb)
+            await message.answer_photo(ad[4], caption=text, reply_markup=get_main_kb())
         else:
-            await message.answer(text, reply_markup=main_kb)
+            await message.answer(text, reply_markup=get_main_kb())
 
 # === УДАЛЕНИЕ ОБЪЯВЛЕНИЙ (ТОЛЬКО АДМИН) ===
-@dp.callback_query_handler(lambda c: c.data.startswith("delete_"))
-async def delete_ad_callback(call: types.CallbackQuery):
+@dp.callback_query(F.data.startswith("delete_"))
+async def delete_ad_callback(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
         await call.answer("Удалять объявления может только администратор.", show_alert=True)
         return
     ad_id = int(call.data.replace("delete_", ""))
     delete_ad(ad_id)
-    await call.message.edit_caption("❌ Объявление удалено администратором.", reply_markup=None)
+    try:
+        await call.message.edit_caption("❌ Объявление удалено администратором.", reply_markup=None)
+    except:
+        await call.message.edit_text("❌ Объявление удалено администратором.", reply_markup=None)
     await call.answer("Удалено.", show_alert=True)
 
 # === ПОДДЕРЖКА, СПОНСОРЫ ===
-@dp.message_handler(lambda m: m.text == '💬 Поддержка')
-async def support(message: types.Message):
-    await message.answer("По вопросам пишите: @bunkoc (замени на свой!)", reply_markup=main_kb)
+@dp.message(Text("💬 Поддержка"))
+async def support(message: Message):
+    await message.answer("По вопросам пишите: @bunkoc (замени на свой!)", reply_markup=get_main_kb())
 
-@dp.message_handler(lambda m: m.text == '🌟 Спонсоры')
-async def sponsors(message: types.Message):
-    await message.answer("Спонсоры:\n1. Не имеются. , reply_markup=main_kb)
+@dp.message(Text("🌟 Спонсоры"))
+async def sponsors(message: Message):
+    await message.answer("Спонсоры:\n1. Нету", reply_markup=get_main_kb())
 
-# === ОШИБКИ ===
-@dp.errors_handler()
-async def errors_handler(update, error):
-    print(f"Ошибка: {error}")
-    return True
+# === ГЛОБАЛЬНЫЙ ХЭНДЛЕР ОТМЕНЫ ===
+@dp.message(StateFilter("*"), Text("❌ Отмена"))
+async def ad_cancel(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Добавление объявления отменено.", reply_markup=get_main_kb())
+
+# === ФОЛЛБЭК ===
+@dp.message()
+async def fallback(message: Message):
+    await message.answer("Пожалуйста, используйте кнопки для управления ботом.", reply_markup=get_main_kb())
 
 # === СТАРТ БОТА ===
-if __name__ == '__main__':
+async def main():
     print("Бот запущен!")
-    executor.start_polling(dp, skip_updates=True)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
