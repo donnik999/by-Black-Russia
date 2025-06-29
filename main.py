@@ -2,8 +2,8 @@ import os
 import asyncio
 import sqlite3
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, StateFilter, Text
-from aiogram.types import Message, CallbackQuery, FSInputFile
+from aiogram.filters import Command, StateFilter
+from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import StatesGroup, State
@@ -126,7 +126,7 @@ async def cmd_start(message: Message):
         reply_markup=get_main_kb()
     )
 
-@dp.message(Text("🛒 Каталог объявлений"))
+@dp.message(F.text == "🛒 Каталог объявлений")
 async def ads_catalog(message: Message):
     ads = get_all_ads()
     if not ads:
@@ -142,7 +142,7 @@ async def ads_catalog(message: Message):
         else:
             await message.answer(text, reply_markup=kb or get_main_kb())
 
-@dp.message(Text("➕ Добавить объявление"))
+@dp.message(F.text == "➕ Добавить объявление")
 async def add_ad_start(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("Выберите тип объявления:", reply_markup=get_type_kb())
@@ -212,7 +212,7 @@ async def ad_no_photo(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("Объявление добавлено (без фото) ✅", reply_markup=get_main_kb())
 
-@dp.message(Text("📦 Мои объявления"))
+@dp.message(F.text == "📦 Мои объявления")
 async def my_ads(message: Message):
     ads = get_user_ads(message.from_user.id)
     if not ads:
@@ -240,16 +240,16 @@ async def delete_ad_callback(call: CallbackQuery):
     await call.answer("Удалено.", show_alert=True)
 
 # === ПОДДЕРЖКА, СПОНСОРЫ ===
-@dp.message(Text("💬 Поддержка"))
+@dp.message(F.text == "💬 Поддержка")
 async def support(message: Message):
     await message.answer("По вопросам пишите: @bunkoc (замени на свой!)", reply_markup=get_main_kb())
 
-@dp.message(Text("🌟 Спонсоры"))
+@dp.message(F.text == "🌟 Спонсоры")
 async def sponsors(message: Message):
-    await message.answer("Спонсоры:\n1. Нету", reply_markup=get_main_kb())
+    await message.answer("Спонсоры:\n1. Нету!", reply_markup=get_main_kb())
 
 # === ГЛОБАЛЬНЫЙ ХЭНДЛЕР ОТМЕНЫ ===
-@dp.message(StateFilter("*"), Text("❌ Отмена"))
+@dp.message(StateFilter("*"), F.text == "❌ Отмена")
 async def ad_cancel(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("Добавление объявления отменено.", reply_markup=get_main_kb())
