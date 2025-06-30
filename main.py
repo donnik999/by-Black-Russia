@@ -8,6 +8,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.client.bot import DefaultBotProperties
 
+# ВСТАВЬ СВОЙ ТОКЕН И АДМИН ID!
 BOT_TOKEN = "7220830808:AAE7R_edzGpvUNboGOthydsT9m81TIfiqzU"
 ADMIN_ID = 6712617550  # твой Telegram user_id
 
@@ -243,11 +244,11 @@ async def delete_ad_callback(call: CallbackQuery):
 
 @dp.message(F.text == "💬 Поддержка")
 async def support(message: Message):
-    await message.answer("По вопросам пишите: @YourSupportUsername (замени на свой!)", reply_markup=get_main_kb())
+    await message.answer("По вопросам пишите: @YourSupportUsername", reply_markup=get_main_kb())
 
 @dp.message(F.text == "🌟 Спонсоры")
 async def sponsors(message: Message):
-    await message.answer("Спонсоры:\n1. Amvera Hosting — https://amvera.io\n2. Ваш ник/группа здесь!", reply_markup=get_main_kb())
+    await message.answer("Спонсоры:\n1. Amvera Hosting — https://amvera.io", reply_markup=get_main_kb())
 
 @dp.message(StateFilter("*"), F.text == "❌ Отмена")
 async def ad_cancel(message: Message, state: FSMContext):
@@ -259,7 +260,6 @@ async def fallback(message: Message):
     await message.answer("Пожалуйста, используйте кнопки для управления ботом.", reply_markup=get_main_kb())
 
 async def main():
-    print("Бот запущен!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
