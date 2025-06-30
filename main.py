@@ -1,16 +1,15 @@
 import asyncio
 import sqlite3
-from aiogram import Bot, Dispatcher, types, F
+from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, StateFilter
-from aiogram.types import Message, CallbackQuery, KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.client.bot import DefaultBotProperties
 
-# === ВСТАВЬ СЮДА СВОЙ ТОКЕН и TELEGRAM ID ===
 BOT_TOKEN = "7220830808:AAE7R_edzGpvUNboGOthydsT9m81TIfiqzU"
-ADMIN_ID = 6712617550  # <-- Твой Telegram user_id
+ADMIN_ID = 6712617550  # твой Telegram user_id
 
 DB_NAME = "br_catalog.db"
 
@@ -43,31 +42,39 @@ class AdForm(StatesGroup):
 def get_main_kb():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text='🛒 Каталог объявлений')],
-            [KeyboardButton(text='➕ Добавить объявление')],
-            [KeyboardButton(text='📦 Мои объявления')],
-            [KeyboardButton(text='💬 Поддержка')],
-            [KeyboardButton(text='🌟 Спонсоры')]
+            [{"text": "🛒 Каталог объявлений"}],
+            [{"text": "➕ Добавить объявление"}],
+            [{"text": "📦 Мои объявления"}],
+            [{"text": "💬 Поддержка"}],
+            [{"text": "🌟 Спонсоры"}]
         ],
         resize_keyboard=True
     )
 
 def get_cancel_kb():
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text='❌ Отмена')]],
+        keyboard=[[{"text": "❌ Отмена"}]],
         resize_keyboard=True
     )
 
 def get_type_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Продажа", callback_data="type_sell"),
-         InlineKeyboardButton(text="Покупка", callback_data="type_buy")]
-    ])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                {"text": "Продажа", "callback_data": "type_sell"},
+                {"text": "Покупка", "callback_data": "type_buy"}
+            ]
+        ]
+    )
 
 def get_delete_kb(ad_id):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_{ad_id}")]
-    ])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                {"text": "❌ Удалить", "callback_data": f"delete_{ad_id}"}
+            ]
+        ]
+    )
 
 def add_ad(user_id, username, ad_type, title, desc, photo_id):
     conn = sqlite3.connect(DB_NAME)
