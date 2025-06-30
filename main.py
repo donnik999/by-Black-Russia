@@ -2,18 +2,19 @@ import asyncio
 import sqlite3
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, StateFilter
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.client.bot import DefaultBotProperties
 
-# ВСТАВЬ СВОЙ ТОКЕН СЮДА (и ADMIN_ID тоже)
+# === ВСТАВЬ СВОЙ ТОКЕН и АДМИН ID ===
 BOT_TOKEN = "7220830808:AAE7R_edzGpvUNboGOthydsT9m81TIfiqzU"
-ADMIN_ID = 6712617550  # <-- Замени на свой Telegram user_id!
+ADMIN_ID = 6712617550  # <-- Твой Telegram user_id
 
 DB_NAME = "br_catalog.db"
 
+# === ИНИЦИАЛИЗАЦИЯ БД ===
 def db_init():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -34,43 +35,44 @@ def db_init():
 
 db_init()
 
+# === FSM состояния ===
 class AdForm(StatesGroup):
     type = State()
     title = State()
     description = State()
     photo = State()
 
+# === КНОПКИ МЕНЮ ===
 def get_main_kb():
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(
-        types.KeyboardButton('🛒 Каталог объявлений'),
-        types.KeyboardButton('➕ Добавить объявление')
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text='🛒 Каталог объявлений')],
+            [KeyboardButton(text='➕ Добавить объявление')],
+            [KeyboardButton(text='📦 Мои объявления')],
+            [KeyboardButton(text='💬 Поддержка')],
+            [KeyboardButton(text='🌟 Спонсоры')]
+        ],
+        resize_keyboard=True
     )
-    kb.add(
-        types.KeyboardButton('📦 Мои объявления'),
-        types.KeyboardButton('💬 Поддержка'),
-        types.KeyboardButton('🌟 Спонсоры')
-    )
-    return kb
 
 def get_cancel_kb():
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(types.KeyboardButton('❌ Отмена'))
-    return kb
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text='❌ Отмена')]],
+        resize_keyboard=True
+    )
 
 def get_type_kb():
-    kb = types.InlineKeyboardMarkup()
-    kb.add(
-        types.InlineKeyboardButton(text="Продажа", callback_data="type_sell"),
-        types.InlineKeyboardButton(text="Покупка", callback_data="type_buy")
-    )
-    return kb
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Продажа", callback_data="type_sell"),
+         InlineKeyboardButton(text="Покупка", callback_data="type_buy")]
+    ])
 
 def get_delete_kb(ad_id):
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_{ad_id}"))
-    return kb
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_{ad_id}")]
+    ])
 
+# === ХЭЛПЕРЫ ДЛЯ БД ===
 def add_ad(user_id, username, ad_type, title, desc, photo_id):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -112,13 +114,11 @@ def get_ad(ad_id):
     conn.close()
     return ad
 
-# Важно! Вот тут теперь без Warning
-bot = Bot(
-    token=BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode="HTML")
-)
+# === ИНИЦИАЛИЗАЦИЯ БОТА ===
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher(storage=MemoryStorage())
 
+# === КОМАНДЫ И МЕНЮ ===
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
@@ -134,7 +134,7 @@ async def ads_catalog(message: Message):
     if not ads:
         await message.answer("Пока что нет объявлений.\nДобавьте первое!", reply_markup=get_main_kb())
         return
-    for ad in ads[:10]:
+    for ad in ads[:10]:  # Показываем только 10 последних
         text = f"<b>Тип:</b> {ad[3].capitalize()}\n<b>Заголовок:</b> {ad[4]}\n<b>Описание:</b> {ad[5]}\n<b>Автор:</b> @{ad[2] if ad[2] else ad[1]}"
         kb = None
         if message.from_user.id == ADMIN_ID:
@@ -227,6 +227,7 @@ async def my_ads(message: Message):
         else:
             await message.answer(text, reply_markup=get_main_kb())
 
+# === УДАЛЕНИЕ ОБЪЯВЛЕНИЙ (ТОЛЬКО АДМИН) ===
 @dp.callback_query(F.data.startswith("delete_"))
 async def delete_ad_callback(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
@@ -240,23 +241,27 @@ async def delete_ad_callback(call: CallbackQuery):
         await call.message.edit_text("❌ Объявление удалено администратором.", reply_markup=None)
     await call.answer("Удалено.", show_alert=True)
 
+# === ПОДДЕРЖКА, СПОНСОРЫ ===
 @dp.message(F.text == "💬 Поддержка")
 async def support(message: Message):
-    await message.answer("По вопросам пишите: @YourSupportUsername (замени на свой!)", reply_markup=get_main_kb())
+    await message.answer("По вопросам пишите: @YourSupportUsername", reply_markup=get_main_kb())
 
 @dp.message(F.text == "🌟 Спонсоры")
 async def sponsors(message: Message):
     await message.answer("Спонсоры:\n1. Amvera Hosting — https://amvera.io\n2. Ваш ник/группа здесь!", reply_markup=get_main_kb())
 
+# === ГЛОБАЛЬНЫЙ ХЭНДЛЕР ОТМЕНЫ ===
 @dp.message(StateFilter("*"), F.text == "❌ Отмена")
 async def ad_cancel(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("Добавление объявления отменено.", reply_markup=get_main_kb())
 
+# === ФОЛЛБЭК ===
 @dp.message()
 async def fallback(message: Message):
     await message.answer("Пожалуйста, используйте кнопки для управления ботом.", reply_markup=get_main_kb())
 
+# === СТАРТ БОТА ===
 async def main():
     print("Бот запущен!")
     await dp.start_polling(bot)
